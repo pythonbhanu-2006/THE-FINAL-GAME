@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Advanced Todo • Calendar + Recurring + Favorites</title>
+<style>
+  :root{
+    --bg:#0f1724; --card:#0b1220; --muted:#9aa4b2; --accent:#6ee7b7; --accent-2:#60a5fa;
+    --glass: rgba(255,255,255,0.03);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  html,body{height:100%; margin:0; background:linear-gradient(180deg,#071021 0%, #07182a 100%); color:#e6eef6}
+  .app{max-width:1100px;margin:28px auto;padding:20px;display:grid;grid-template-columns:360px 1fr;gap:20px}
+  .panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:14px; padding:16px; box-shadow: 0 6px 18px rgba(2,6,23,0.6); border:1px solid rgba(255,255,255,0.03)}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  header h1{font-size:20px;margin:0}
+  .small{color:var(--muted);font-size:13px}
+  /* Left column - controls & calendar */
+  .left .add-form{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+  input[type="text"], input[type="date"], select, textarea{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;outline:none}
+  .row{display:flex;gap:8px}
+  button.btn{padding:8px 10px;border-radius:9px;border:none;cursor:pointer;background:var(--accent-2);color:#062036;font-weight:600}
+  button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)}
+  .calendar{margin-top:12px}
+  .cal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cal-cell{min-height:76px;border-radius:8px;padding:8px;background:var(--glass);position:relative;cursor:pointer}
+  .cal-cell .date-num{font-weight:700;color:var(--muted);font-size:13px}
+  .dot-row{display:flex;gap:6px;position:absolute;left:8px;bottom:8px;right:8px}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .today{outline:2px solid rgba(96,165,250,0.18);box-shadow:0 4px 12px rgba(96,165,250,0.06)}
+  .inactive{opacity:0.35}
+  /* Right column - tasks list */
+  .controls{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+  .view-tabs{display:flex;gap:8px}
+  .task-list{display:flex;flex-direction:column;gap:8px;max-height:66vh;overflow:auto;padding-right:6px}
+  .task {display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02));border:1px solid rgba(255,255,255,0.02)}
+  .task-left{display:flex;gap:10px;align-items:center}
+  .checkbox{width:18px;height:18px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);display:grid;place-items:center;cursor:pointer}
+  .checkbox.done{background:linear-gradient(90deg,var(--accent),var(--accent-2));border:none;color:#042227;font-weight:700}
+  .task-title{font-weight:600}
+  .task-meta{font-size:12px;color:var(--muted)}
+  .fav{cursor:pointer;font-size:18px;padding:6px}
+  .fav.on{color:gold}
+  .small-ghost{background:transparent;border:1px dashed rgba(255,255,255,0.03);padding:6px 8px;border-radius:8px;color:var(--muted)}
+  .rec-badge{font-size:11px;padding:4px 6px;border-radius:999px;border:1px solid rgba(255,255,255,0.03);background:rgba(255,255,255,0.01)}
+  /* Suggestion area */
+  .suggest{margin-top:12px;padding:10px;border-radius:10px;background:linear-gradient(90deg, rgba(96,165,250,0.06), rgba(110,231,183,0.03));color:#dff7ef}
+  /* responsive */
+  @media (max-width:980px){.app{grid-template-columns:1fr; padding:14px} .left{order:2}}
+  /* icons */
+  .icon {display:inline-block; width:18px; height:18px; vertical-align:middle}
+  .muted-inline{color:var(--muted); font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- LEFT: controls + calendar -->
+  <div class="panel left">
+    <header>
+      <div>
+        <h1>Bhanu's Planner</h1>
+        <div class="small">Advanced todo + calendar</div>
+      </div>
+      <div class="small muted-inline">Local Time: <span id="localTime">--:--</span></div>
+    </header>
+
+    <!-- Add Task -->
+    <div class="add-form">
+      <input id="taskTitle" type="text" placeholder="Task title — e.g. Study AI (required)">
+      <textarea id="taskNotes" rows="2" placeholder="Notes (optional)"></textarea>
+      <div class="row">
+        <input id="taskDate" type="date">
+        <select id="taskRepeat" title="Repeat">
+          <option value="none">No repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+        <select id="taskTime">
+          <option value="">No time</option>
+          <!-- times populated by JS -->
+        </select>
+      </div>
+      <div class="row">
+        <button id="addTaskBtn" class="btn">Add Task</button>
+        <button id="clearForm" class="ghost">Clear</button>
+      </div>
+    </div>
+
+    <!-- Calendar -->
+    <div class="calendar panel" style="padding:12px;">
+      <div class="cal-header">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="prevMonth" class="small-ghost">◀</button>
+          <div id="calMonth" style="font-weight:700"></div>
+          <button id="nextMonth" class="small-ghost">▶</button>
+        </div>
+        <div class="small muted-inline" id="monthStats">0 tasks</div>
+      </div>
+      <div class="cal-grid" id="calGrid">
+        <!-- week day headers -->
+      </div>
+    </div>
+
+    <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+      <button id="showFavs" class="small-ghost">Show Favorites</button>
+      <button id="clearAll" class="small-ghost">Clear All Data</button>
+    </div>
+
+    <div class="suggest" id="suggestArea" style="display:none">
+      <!-- suggestions inserted by JS -->
+    </div>
+
+    <div style="margin-top:12px" class="small muted-inline">Tip: Set a task to <strong>Daily</strong> for hobbies; the app will recommend adding it each morning.</div>
+  </div>
+
+  <!-- RIGHT: tasks and views -->
+  <div class="panel right">
+    <div class="controls">
+      <div class="view-tabs">
+        <button class="small-ghost" data-view="day">Day</button>
+        <button class="small-ghost" data-view="week">Week</button>
+        <button class="small-ghost" data-view="month">Month</button>
+        <button class="small-ghost" data-view="all">All</button>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <input id="search" placeholder="Search tasks..." class="small-ghost" style="padding:8px;border-radius:8px">
+        <select id="sortBy" class="small-ghost">
+          <option value="date">Sort: Date</option>
+          <option value="fav">Sort: Favorites</option>
+          <option value="time">Sort: Time</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <div class="small muted-inline">Selected date: <strong id="selectedDateLabel">Today</strong></div>
+        <div id="weeklyHighest" class="small muted-inline" style="margin-top:6px"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="addRecurringToday" class="btn" title="Add today's suggested recurring tasks">Add Today's Suggestions</button>
+        <button id="exportJson" class="small-ghost">Export JSON</button>
+      </div>
+    </div>
+
+    <div class="task-list" id="taskList">
+      <!-- tasks appended here -->
+    </div>
+
+    <div style="margin-top:12px;" class="small muted-inline">Made with ♥ — single file, data stored locally in your browser.</div>
+  </div>
+</div>
+
+<script>
+/* ------------------------------
+   Simple Advanced Todo App
+   - single-file
+   - localStorage persistence
+   - calendar + daily/weekly/month view
+   - recurring tasks & suggestions
+   - favorites
+--------------------------------*/
+
+/* Utility helpers */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => document.querySelectorAll(sel);
+const appKey = 'bhanu_advanced_todos_v1';
+let state = {
+  tasks: [], // {id,title,notes,date(YYYY-MM-DD),time(HH:MM|null),repeat: none|daily|weekly|monthly, fav:boolean, done:boolean, createdAt}
+  view: 'day',
+  currentMonth: new Date().getMonth(),
+  currentYear: new Date().getFullYear(),
+  selectedDate: (new Date()).toISOString().slice(0,10)
+};
+
+function saveState(){
+  localStorage.setItem(appKey, JSON.stringify(state.tasks));
+}
+function loadState(){
+  const data = localStorage.getItem(appKey);
+  if (data) {
+    try { state.tasks = JSON.parse(data); } catch(e){ state.tasks = [] }
+  } else {
+    state.tasks = [];
+  }
+}
+function uid(){ return 't'+Math.random().toString(36).slice(2,9) }
+
+/* Time display (local) */
+function updateLocalTime(){
+  const now = new Date();
+  $('#localTime').textContent = now.toLocaleTimeString();
+}
+setInterval(updateLocalTime,1000);
+updateLocalTime();
+
+/* Populate times dropdown */
+(function fillTimes(){
+  const sel = $('#taskTime');
+  for(let h=0;h<24;h++){
+    for(let m=0;m<60;m+=30){
+      const hh = String(h).padStart(2,'0'), mm = String(m).padStart(2,'0');
+      const opt = document.createElement('option');
+      opt.value = `${hh}:${mm}`; opt.text = `${hh}:${mm}`;
+      sel.appendChild(opt);
+    }
+  }
+})();
+
+/* Add / Edit / Delete tasks */
+function addTask(obj){
+  const t = {
+    id: uid(),
+    title: obj.title,
+    notes: obj.notes||'',
+    date: obj.date,
+    time: obj.time||'',
+    repeat: obj.repeat||'none',
+    fav: !!obj.fav,
+    done: !!obj.done,
+    createdAt: new Date().toISOString()
+  };
+  state.tasks.push(t);
+  saveState();
+  renderAll();
+  return t;
+}
+
+function updateTask(id, patch){
+  const i = state.tasks.findIndex(x=>x.id===id); if(i<0) return;
+  state.tasks[i] = {...state.tasks[i], ...patch};
+  saveState(); renderAll();
+}
+
+function deleteTask(id){
+  state.tasks = state.tasks.filter(x=>x.id!==id); saveState(); renderAll();
+}
+
+/* Recurring: generate occurrences for display but don't duplicate stored tasks.
+   For daily suggestions we look for tasks with repeat:daily and show suggestion if not yet added for date.
+*/
+function tasksForDate(YYYYMMDD){
+  // include tasks that are:
+  // - exactly date match
+  // - or tasks with repeat daily/weekly/monthly that fall on date but not duplicated
+  const date = new Date(YYYYMMDD + 'T00:00:00');
+  const out = [];
+
+  // tasks that have explicit date equal
+  state.tasks.forEach(t=>{
+    if (t.date === YYYYMMDD) out.push(t);
+    else if (t.repeat === 'daily') {
+      // if this recurring task has same "title" but not assigned for this date, we treat as occurrence for display only
+      out.push({...t, instanceDate:YYYYMMDD, generated:true});
+    } else if (t.repeat === 'weekly') {
+      const td = new Date(t.date+'T00:00:00');
+      if (!isNaN(td)){
+        // same weekday?
+        if (td.getDay() === date.getDay()) out.push({...t, instanceDate:YYYYMMDD, generated:true});
+      }
+    } else if (t.repeat === 'monthly') {
+      const td = new Date(t.date+'T00:00:00');
+      if (!isNaN(td)){
+        if (td.getDate() === date.getDate()) out.push({...t, instanceDate:YYYYMMDD, generated:true});
+      }
+    }
+  });
+
+  // avoid duplicates where stored task already exists for date with same title
+  // prioritize stored tasks; don't show generated if a stored copy exists with same title
+  const titlesStored = new Set(state.tasks.filter(x=>x.date===YYYYMMDD).map(x=>x.title));
+  return out.filter(t => !(t.generated && titlesStored.has(t.title)));
+}
+
+/* Calendar rendering */
+const weekDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function renderCalendar(){
+  const grid = $('#calGrid');
+  grid.innerHTML = '';
+  // show weekday headers first
+  weekDays.forEach(d=>{
+    const h = document.createElement('div');
+    h.textContent = d; h.style.opacity = 0.7; h.style.fontSize='13px';
+    grid.appendChild(h);
+  });
+
+  const year = state.currentYear, month = state.currentMonth;
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month+1, 0);
+  const startDay = first.getDay();
+  const totalDays = last.getDate();
+  // previous month trailing days count
+  const prevLast = new Date(year, month, 0).getDate();
+
+  // cells: 6 rows of 7 = 42
+  for(let i=0;i<42;i++){
+    const cell = document.createElement('div'); cell.className='cal-cell';
+    let dayNum, cellDateStr; let inactive=false;
+    const cellIndex = i - startDay + 1;
+    if (i < startDay) {
+      dayNum = prevLast - (startDay -1 - i);
+      inactive = true;
+      const dt = new Date(year, month-1, dayNum);
+      cellDateStr = dt.toISOString().slice(0,10);
+    } else if (cellIndex > totalDays) {
+      dayNum = cellIndex - totalDays;
+      inactive = true;
+      const dt = new Date(year, month+1, dayNum);
+      cellDateStr = dt.toISOString().slice(0,10);
+    } else {
+      dayNum = cellIndex;
+      const dt = new Date(year, month, dayNum);
+      cellDateStr = dt.toISOString().slice(0,10);
+    }
+    // header
+    const dn = document.createElement('div'); dn.className='date-num'; dn.textContent = dayNum;
+    if (inactive) { cell.classList.add('inactive'); }
+    // today outline
+    const todayStr = (new Date()).toISOString().slice(0,10);
+    if (cellDateStr === todayStr) cell.classList.add('today');
+
+    cell.appendChild(dn);
+
+    // put dots for tasks on that date (count up to 3)
+    const tasksHere = tasksForDate(cellDateStr);
+    const dotRow = document.createElement('div'); dotRow.className='dot-row';
+    tasksHere.slice(0,4).forEach((t, idx)=>{
+      const d = document.createElement('div'); d.className='dot';
+      // color by fav/done/normal
+      if (t.fav) d.style.background = 'gold';
+      else if (t.done) d.style.background = 'gray';
+      else d.style.background = 'rgba(96,165,250,0.9)';
+      dotRow.appendChild(d);
+    });
+    cell.appendChild(dotRow);
+
+    // click to select date
+    cell.addEventListener('click',()=>{ state.selectedDate = cellDateStr; state.view='day'; updateSelectedDateLabel(); renderAll(); });
+
+    grid.appendChild(cell);
+  }
+
+  $('#calMonth').textContent = new Date(year, month).toLocaleString(undefined,{month:'long', year:'numeric'});
+  $('#monthStats').textContent = `${countTasksInMonth(year, month)} tasks`;
+}
+
+/* Count tasks in visible month (including generated occurrences) */
+function countTasksInMonth(year, month){
+  // iterate days
+  let count = 0;
+  const days = new Date(year, month+1,0).getDate();
+  for(let d=1; d<=days; d++){
+    const dt = new Date(year, month, d);
+    const key = dt.toISOString().slice(0,10);
+    count += tasksForDate(key).length;
+  }
+  return count;
+}
+
+/* Rendering task list (based on state.view) */
+function updateSelectedDateLabel(){
+  const s = state.selectedDate;
+  const dd = new Date(s+'T00:00:00');
+  $('#selectedDateLabel').textContent = dd.toLocaleDateString(undefined,{weekday:'short', year:'numeric', month:'short', day:'numeric'});
+}
+
+function getTasksForCurrentView(){
+  const view = state.view;
+  const sel = state.selectedDate;
+  const selected = new Date(sel+'T00:00:00');
+  if (view === 'day'){
+    return tasksForDate(sel);
+  } else if (view === 'week'){
+    const start = new Date(selected); start.setDate(selected.getDate() - selected.getDay()); // sunday
+    const arr = [];
+    for(let i=0;i<7;i++){
+      const d = new Date(start); d.setDate(start.getDate()+i);
+      arr.push(...tasksForDate(d.toISOString().slice(0,10)));
+    }
+    return arr;
+  } else if (view === 'month'){
+    const year = state.currentYear, month = state.currentMonth;
+    const arr = [];
+    const days = new Date(year, month+1,0).getDate();
+    for(let d=1; d<=days; d++){
+      const key = new Date(year,month,d).toISOString().slice(0,10);
+      arr.push(...tasksForDate(key));
+    }
+    return arr;
+  } else { // all
+    // return stored tasks only (not generated occurrences)
+    return state.tasks.slice().sort((a,b)=> new Date(a.date) - new Date(b.date));
+  }
+}
+
+function renderTasks(){
+  const container = $('#taskList'); container.innerHTML = '';
+  const search = $('#search').value.toLowerCase();
+  const sortBy = $('#sortBy').value;
+  let list = getTasksForCurrentView();
+
+  // remove duplicates by id/title+date if generated and stored both exist handled in tasksForDate
+  // apply search
+  if (search){
+    list = list.filter(t => (t.title || '').toLowerCase().includes(search) || (t.notes||'').toLowerCase().includes(search));
+  }
+  // sort
+  list.sort((a,b)=>{
+    if (sortBy==='date'){
+      return (a.instanceDate||a.date||'') > (b.instanceDate||b.date||'') ? 1 : -1;
+    } else if (sortBy==='fav'){
+      return (b.fav?1:0) - (a.fav?1:0);
+    } else if (sortBy==='time'){
+      return (a.time||'') > (b.time||'') ? 1 : -1;
+    }
+    return 0;
+  });
+
+  if (list.length === 0){
+    const empty = document.createElement('div'); empty.className='small muted-inline'; empty.textContent = 'No tasks for this view.';
+    container.appendChild(empty); return;
+  }
+
+  list.forEach(t=>{
+    const el = document.createElement('div'); el.className='task';
+    const left = document.createElement('div'); left.className='task-left';
+    const chk = document.createElement('div'); chk.className='checkbox'; chk.innerHTML = t.done ? '✓' : '';
+    if (t.done) chk.classList.add('done');
+    chk.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if (t.generated) {
+        // generated instance -> create a real task for this date and mark done
+        addTask({title:t.title, notes:t.notes, date:t.instanceDate, time:t.time, repeat:'none', fav:t.fav, done:true});
+      } else {
+        updateTask(t.id, {done: !t.done});
+      }
+    });
+    left.appendChild(chk);
+
+    const tt = document.createElement('div');
+    const title = document.createElement('div'); title.className='task-title'; title.textContent = t.title + (t.generated ? ' (recurring)' : '');
+    const meta = document.createElement('div'); meta.className='task-meta';
+    const dt = t.instanceDate || t.date || '';
+    meta.textContent = `${dt}${t.time? ' • ' + t.time : ''} ${t.repeat && t.repeat !== 'none' ? ' • ' + t.repeat : ''}`;
+    tt.appendChild(title); tt.appendChild(meta);
+    left.appendChild(tt);
+
+    const right = document.createElement('div'); right.style.display='flex'; right.style.alignItems='center'; right.style.gap='8px';
+    const fav = document.createElement('div'); fav.className='fav'; fav.innerHTML = t.fav ? '★' : '☆'; if(t.fav) fav.classList.add('on');
+    fav.addEventListener('click', (e)=>{ e.stopPropagation(); if (t.generated) { /* create real task and fav it */ addTask({title:t.title,notes:t.notes,date:t.instanceDate,time:t.time,repeat:'none',fav:true}); } else updateTask(t.id,{fav:!t.fav}); });
+    right.appendChild(fav);
+
+    const edit = document.createElement('button'); edit.className='small-ghost'; edit.textContent='Edit';
+    edit.addEventListener('click',(e)=>{ e.stopPropagation(); openEditModal(t); });
+    right.appendChild(edit);
+
+    const del = document.createElement('button'); del.className='small-ghost'; del.textContent='Delete';
+    del.addEventListener('click',(e)=>{ e.stopPropagation(); if(t.generated){ alert('This is a recurring suggestion. To remove it permanently, delete the source task in its original date.'); } else { if(confirm('Delete task?')) deleteTask(t.id); } });
+    right.appendChild(del);
+
+    el.appendChild(left); el.appendChild(right);
+    container.appendChild(el);
+  });
+}
+
+/* Edit (simple inline prompt) */
+function openEditModal(t){
+  if (t.generated){
+    alert('This is a generated recurring occurrence. To edit permanently, find the source task in its original date and edit that.');
+    return;
+  }
+  const newTitle = prompt('Edit title', t.title);
+  if (!newTitle) return;
+  const newNotes = prompt('Edit notes', t.notes || '');
+  updateTask(t.id, {title:newTitle, notes:newNotes});
+}
+
+/* Suggestions area shows daily recurring hobbies not yet added for selected date */
+function renderSuggestions(){
+  const area = $('#suggestArea');
+  const today = state.selectedDate;
+  const dailySources = state.tasks.filter(t => t.repeat === 'daily');
+  // show suggestions that are not present on selected date
+  const disco = dailySources.filter(s => {
+    return !state.tasks.some(x => x.date === today && x.title === s.title);
+  });
+  if (disco.length === 0) { area.style.display='none'; return; }
+  area.style.display='block';
+  area.innerHTML = `<strong>Suggestions</strong><div style="margin-top:6px" id="suggestList"></div>`;
+  const list = $('#suggestList');
+  disco.forEach(s=>{
+    const row = document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center'; row.style.marginTop='8px';
+    row.innerHTML = `<div><div style="font-weight:600">${s.title}</div><div class="small muted-inline">${s.notes||''}</div></div>`;
+    const right = document.createElement('div'); right.style.display='flex'; right.style.gap='8px';
+    const addBtn = document.createElement('button'); addBtn.className='btn'; addBtn.textContent='Add';
+    addBtn.addEventListener('click', ()=> {
+      addTask({title:s.title, notes:s.notes, date:today, time:s.time, repeat:'none', fav:s.fav});
+    });
+    right.appendChild(addBtn);
+    row.appendChild(right);
+    list.appendChild(row);
+  });
+}
+
+/* Weekly highest: find top 3 favorites in week */
+function renderWeeklyHighest(){
+  const view = 'week';
+  const sel = state.selectedDate;
+  const selected = new Date(sel+'T00:00:00');
+  const start = new Date(selected); start.setDate(selected.getDate() - selected.getDay());
+  const arr = [];
+  for(let i=0;i<7;i++){
+    const d = new Date(start); d.setDate(start.getDate()+i);
+    arr.push(...tasksForDate(d.toISOString().slice(0,10)));
+  }
+  // highest = favorites first, then tasks with time
+  arr.sort((a,b)=> (b.fav?1:0)-(a.fav?1:0) || (a.time?1:0)-(b.time?1:0));
+  const top = arr.slice(0,3);
+  if (top.length === 0) $('#weeklyHighest').textContent = 'No top tasks this week.';
+  else $('#weeklyHighest').textContent = 'Top this week: ' + top.map(t=>t.title+(t.fav?'★':'')).join(' • ');
+}
+
+/* Event bindings */
+$('#addTaskBtn').addEventListener('click', ()=>{
+  const title = $('#taskTitle').value.trim(); if (!title) { alert('Title required'); return; }
+  const date = $('#taskDate').value || state.selectedDate;
+  addTask({title, notes: $('#taskNotes').value, date, time: $('#taskTime').value, repeat: $('#taskRepeat').value});
+  $('#taskTitle').value=''; $('#taskNotes').value=''; $('#taskTime').value=''; $('#taskRepeat').value='none';
+});
+
+$('#clearForm').addEventListener('click', ()=>{ $('#taskTitle').value=''; $('#taskNotes').value=''; $('#taskTime').value=''; $('#taskRepeat').value='none'; $('#taskDate').value=''; });
+
+$$('[data-view]').forEach(b => b.addEventListener('click', (e)=>{ state.view = e.currentTarget.dataset.view; renderAll(); }));
+
+$('#prevMonth').addEventListener('click', ()=>{ state.currentMonth--; if(state.currentMonth<0){ state.currentMonth=11; state.currentYear--; } renderAll(); });
+$('#nextMonth').addEventListener('click', ()=>{ state.currentMonth++; if(state.currentMonth>11){ state.currentMonth=0; state.currentYear++; } renderAll(); });
+
+$('#search').addEventListener('input', ()=>renderTasks());
+$('#sortBy').addEventListener('change', ()=>renderTasks());
+
+$('#showFavs').addEventListener('click', ()=>{
+  // show favorites by switching to 'all' view and filtering
+  state.view = 'all';
+  renderAll();
+  // highlight favorites by sorting
+  $('#sortBy').value = 'fav';
+  renderTasks();
+});
+
+$('#clearAll').addEventListener('click', ()=>{ if(confirm('Clear all saved tasks?')) { state.tasks=[]; saveState(); renderAll(); } });
+
+$('#addRecurringToday').addEventListener('click', ()=>{
+  // add all suggestions shown
+  const today = state.selectedDate;
+  const dailySources = state.tasks.filter(t=>t.repeat === 'daily');
+  dailySources.forEach(s => {
+    // add if not already present
+    if (!state.tasks.some(x=>x.date===today && x.title===s.title)){
+      addTask({title:s.title, notes:s.notes, date:today, time:s.time, repeat:'none', fav:s.fav});
+    }
+  });
+  alert('Added suggestions for today.');
+});
+
+$('#exportJson').addEventListener('click', ()=>{
+  const dataStr = JSON.stringify(state.tasks, null, 2);
+  const blob = new Blob([dataStr], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'todos.json'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* keyboard: Enter adds if title focused */
+$('#taskTitle').addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { $('#addTaskBtn').click(); } });
+
+/* load & initial render */
+function renderAll(){
+  renderCalendar();
+  updateSelectedDateLabel();
+  renderTasks();
+  renderSuggestions();
+  renderWeeklyHighest();
+}
+
+// initial load
+loadState();
+// ensure currentMonth/currentYear consistent with selectedDate
+const selected = new Date(state.selectedDate + 'T00:00:00');
+state.currentMonth = selected.getMonth(); state.currentYear = selected.getFullYear();
+renderAll();
+
+/* Some sample demo tasks (only when no tasks exist) */
+if (state.tasks.length === 0){
+  addTask({title:'Study AI • 1hr', notes:'Practice transformers', date: state.selectedDate, time:'18:00', repeat:'none', fav:true});
+  // add a recurring hobby example
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+  const initDate = yesterday.toISOString().slice(0,10);
+  addTask({title:'Exercise (30m)', notes:'Daily walk or yoga', date: initDate, time:'07:00', repeat:'daily', fav:false});
+  addTask({title:'Read 20 pages', notes:'Book time', date: state.selectedDate, time:'21:00', repeat:'weekly', fav:false});
+}
+
+/* keep calendar month synced when user selects a date via add form */
+$('#taskDate').addEventListener('change', (e)=> {
+  const dt = new Date(e.target.value + 'T00:00:00');
+  if (!isNaN(dt)){
+    state.currentMonth = dt.getMonth(); state.currentYear = dt.getFullYear();
+    state.selectedDate = e.target.value;
+    renderAll();
+  }
+});
+
+/* small helper: backup on unload */
+window.addEventListener('beforeunload', ()=> saveState());
+
+</script>
+</body>
+</html>
